@@ -20,12 +20,17 @@ message = b"Message to send to the client."
 
 max_size = 4096  # 最大バイトサイズ
 
-# 空の文字列も0.0.0.0として使用できます。
-sock.bind((address, port))
+
+# 接続の失敗回数　最大３回接続に失敗したらコネクションを切る
+failure_count = 0
+
+user_name = None
+
 while True:
     try:
-        # ユーザー名を入力させる
-        user_name = input("Please input your name")
+        if user_name is None:
+            # 起動後初回はユーザー名を入力させる
+            user_name = input("Please input your name")
 
         # ユーザー名をバイト変換
         user_name_byte = user_name.encode("utf-8")
@@ -61,8 +66,10 @@ while True:
         print("received {!r}".format(data))
 
     except:
-        # エラーが起きたら接続を切る
-        print("error has ocurred. stop connection")
-        break
+        failure_count = failure_count + 1
+        print("connection failed" + str(failure_count))
+        # 3回以上エラーが起きたら接続を切る
+        if failure_count >= 3:
+            break
 
 sock.close()

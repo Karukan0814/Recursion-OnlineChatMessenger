@@ -69,7 +69,11 @@ def talk_in_room(user_name, token, room_name):
             if message.lower() == "exit":
                 break
             full_message = f"{room_name}:{token}:{user_name}:{message}"
-            sock.sendto(full_message.encode("utf-8"), server_address)
+            if full_message.encode("utf-8") > 4096:
+                print("message should be less than 4096 bytes")
+                continue
+            else:
+                sock.sendto(full_message.encode("utf-8"), server_address)
     finally:
         # 受信スレッドを停止
         stop_event.set()
@@ -77,11 +81,21 @@ def talk_in_room(user_name, token, room_name):
         sock.close()
 
 
+def input_validation_max(input_name: str, max_length: int):
+    while True:
+        input_val = input("Please input your name: ")
+        encoded_name = input_val.encode("utf-8")
+
+        if len(encoded_name) <= max_length:
+            return input_val
+        else:
+            print(input_name + " must be less than " + str(max_length) + " bytes!")
+
+
 def main():
-    # TODO　入力チェック入れる
-    user_name = input("Please input your name")
+    user_name = input_validation_max("user name", 255)
     start_room = input("Do you start a new chat? - y/n")
-    room_name = input("Please input room name")
+    room_name = input_validation_max("room name", 28)
 
     # サーバが待ち受けているポートにソケットを接続します
     server_address = "localhost"
@@ -90,7 +104,6 @@ def main():
 
     print("connecting to {}".format(server_address, server_port))
     try:
-        # 接続後、サーバとクライアントが相互に読み書きができるようになります
         sock.connect((server_address, server_port))
     except socket.error as err:
         print(err)
@@ -119,7 +132,7 @@ def main():
             response = sock.recv(1)
             response_value = int.from_bytes(response, "big")  # レスポンスを整数に変換
             if response_value == 0:
-                print("start-initializing")
+                print("initializing")
             elif response_value == 1:
                 print("preparing")
             elif response_value == 2:
@@ -129,7 +142,6 @@ def main():
                 raise Exception("something wrong with starting chatroom")
 
         # サーバーからトークンを受け取る
-        print("トークン待ち受け")
         response = sock.recv(4096)
 
         token = response.decode("utf-8")

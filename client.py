@@ -42,60 +42,39 @@ def create_body(room_name, operation_payload):
     return body
 
 
-def talk_in_room(user_name, token, room_name):
-    # サーバとクライアントは、UDP ネットワークソケットを使ってメッセージのやり取りをします。
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+import threading
 
-    server_address = "localhost"
-    server_port = 9001
 
-    max_size = 4096  # 最大バイトサイズ
-
-    # 接続の失敗回数　最大３回接続に失敗したらコネクションを切る
-    failure_count = 0
-
-    while True:
+def receive_message(sock, stop_event):
+    while not stop_event.is_set():
         try:
-            # ユーザー名をバイト変換
-            user_name_byte = user_name.encode("utf-8")
-            # ユーザー名（バイト）の長さを取得
-            user_name_length = len(user_name_byte)
-            if user_name_length > 255:
-                print("User name must be less than 256 bytes!")
-                break
-
-            # サーバからの応答を受信
-            receive_flag = True
-            while receive_flag:
-                try:
-                    data, _ = sock.recvfrom(4096)
-                    print("Received:", data.decode("utf-8"))
-                except:
-                    receive_flag = False
-
-            message = input("Input your message: ")
-
-            # チャットルーム名、トークン、ユーザー名、メッセージを一緒に送信
-            full_message = f"{room_name}:{token}:{user_name}:{message}"
-            print("full_message", full_message)
-            message_byte = full_message.encode("utf-8")
-
-            if len(message_byte) > max_size:
-                print("Message must be less than 4096 bytes!")
-                continue
-
-            # サーバへのデータ送信
-            sock.sendto(message_byte, (server_address, server_port))
-            print("Message sent.")
-
+            data, _ = sock.recvfrom(4096)
+            print("Received:", data.decode("utf-8"))
         except:
-            failure_count = failure_count + 1
-            print("connection failed" + str(failure_count))
-            # 3回以上エラーが起きたら接続を切る
-            if failure_count >= 3:
-                break
+            pass
 
-    sock.close()
+
+def talk_in_room(user_name, token, room_name):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_address = ("localhost", 9001)
+    stop_event = threading.Event()
+
+    # 受信スレッドを開始
+    receiver_thread = threading.Thread(target=receive_message, args=(sock, stop_event))
+    receiver_thread.start()
+
+    try:
+        while True:
+            message = input("Input your message (or type 'exit' to quit): ")
+            if message.lower() == "exit":
+                break
+            full_message = f"{room_name}:{token}:{user_name}:{message}"
+            sock.sendto(full_message.encode("utf-8"), server_address)
+    finally:
+        # 受信スレッドを停止
+        stop_event.set()
+        receiver_thread.join()
+        sock.close()
 
 
 def main():

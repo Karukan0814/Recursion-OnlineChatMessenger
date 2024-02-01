@@ -34,11 +34,6 @@ class Chatroom:
         # まず、作成者を入れておく owner_infoはChatclientである
         active_clients[owner_info.userid] = owner_info
         self.active_clients = active_clients
-        self.owner_token = owner_token
-        self.messagelist = ["first message"]
-
-    def add_message(self, message):
-        self.messagelist.append(message)
 
     def del_userlist(self, userid):
         self.active_clients.pop(userid, None)
@@ -174,7 +169,10 @@ def enter_chatroom():
                     connection.sendall(token.encode("utf-8"))
 
                 else:
-                    raise Exception("指定のチャットルームは存在しません")
+                    print("this chat room does not exist")
+
+                    reaction = 3
+                    connection.sendall(reaction.to_bytes(1, "big"))
 
         # 新しいチャットルームに参加しようとするとき、操作コードは 2 です。状態は作成時と同様で、クライアントも生成されたトークンを受け取りますが、ホストではありません。
         # チャットルームごとに、サーバは許可されたリストトークンのリストを追跡する必要があります。ユーザーがそのトークンで参加すると、トークンの所有者として設定されます。メッセージがチャットルーム内の他のすべての人にリレーされるためには、トークンと IP アドレスが一致しなければなりません。
@@ -189,7 +187,7 @@ def enter_chatroom():
 
 def send_chat():
     # タイムアウト期間（秒）
-    timeout_period = 60 * 2
+    timeout_period = 60 * 5  # とりあえずタイムアウト５分に設定
 
     # AF_INETを使用し、UDPソケットを作成
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -230,15 +228,23 @@ def send_chat():
             active_clients = chatroom_info.active_clients
             print("active_clients", active_clients)
 
+            # タイムアウトチェック→タイムアウトしたユーザーはアクティブユーザーリストから削除する
+            current_time = time.time()
+            for userid in list(active_clients):
+                if current_time - active_clients[userid].last_activity > timeout_period:
+                    print(f"Client {userid} has timed out and will be removed.")
+                    del active_clients[userid]
             # バイトからintに変換
             userid_int = len(user_name)
             # アクティブなクライアントのマップに既に存在するか確認
             if userid_int not in active_clients:
-                raise Exception("this user is not authorized")
+                # raise Exception("this user is not authorized")
+                sock.sendto("Invalid token".encode("utf-8"), address)
+
             else:
                 # チャットルーム内にあったら、トークンが一致するか確認
                 userinfo = active_clients[userid_int]
-                print("userinfo", userinfo.token)
+                print("userinfo address", userinfo.address)
                 if token == userinfo.token:
                     # トークンが一致＝認証OK
                     # アドレスを入れる
@@ -246,23 +252,24 @@ def send_chat():
                     # あったら最終メンション時刻を更新
                     active_clients[userid_int].update_last_activity()
                 else:
-                    raise Exception("this user is not authorized")
-
-            # タイムアウトチェック→タイムアウトしたユーザーはアクティブユーザーリストから削除する
-            current_time = time.time()
-            for userid in list(active_clients):
-                if current_time - active_clients[userid].last_activity > timeout_period:
-                    print(f"Client {userid} has timed out and will be removed.")
-                    del active_clients[userid]
+                    # raise Exception("this user is not authorized")
+                    sock.sendto("Invalid token".encode("utf-8"), address)
 
             # 現在アクティブなユーザーにのみメッセージを送る
             all_message = user_name + ":" + message
             for userid in list(active_clients):
                 # アクティブなユーザーのアドレスにメッセージを送る
-                print(active_clients[userid].address)
-                sent = sock.sendto(
-                    all_message.encode("utf-8"), active_clients[userid].address
-                )
+                try:
+                    print(active_clients[userid].address)
+                    sent = sock.sendto(
+                        all_message.encode("utf-8"), active_clients[userid].address
+                    )
+                except:
+                    print(
+                        "sending message to "
+                        + str(active_clients[userid].userid)
+                        + "failed"
+                    )
 
 
 def main():

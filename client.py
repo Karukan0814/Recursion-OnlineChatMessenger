@@ -54,7 +54,6 @@ def talk_in_room(user_name, token, room_name):
     # 接続の失敗回数　最大３回接続に失敗したらコネクションを切る
     failure_count = 0
 
-    # TODO 初めにチャットルーム名、トークン、ユーザ名を送って認証を行う
     while True:
         try:
             # ユーザー名をバイト変換
@@ -64,6 +63,15 @@ def talk_in_room(user_name, token, room_name):
             if user_name_length > 255:
                 print("User name must be less than 256 bytes!")
                 break
+
+            # サーバからの応答を受信
+            receive_flag = True
+            while receive_flag:
+                try:
+                    data, _ = sock.recvfrom(4096)
+                    print("Received:", data.decode("utf-8"))
+                except:
+                    receive_flag = False
 
             message = input("Input your message: ")
 
@@ -79,10 +87,6 @@ def talk_in_room(user_name, token, room_name):
             # サーバへのデータ送信
             sock.sendto(message_byte, (server_address, server_port))
             print("Message sent.")
-
-            # サーバからの応答を受信
-            data, _ = sock.recvfrom(4096)
-            print("Received:", data.decode("utf-8"))
 
         except:
             failure_count = failure_count + 1
@@ -114,7 +118,8 @@ def main():
         sys.exit(1)
 
     operation = 2
-    if start_room == "y" or "Y":
+    print("start_room", start_room)
+    if start_room == "y" or start_room == "Y":
         operation = 1
         # 新たなチャットルームを作成する
         print("starting a new chat room...")
@@ -123,7 +128,7 @@ def main():
 
     try:
         # ヘッダー（32 バイト）: RoomNameSize（1 バイト） | Operation（1 バイト） | State（1 バイト） | OperationPayloadSize（29 バイト）
-        header = create_header(len(room_name), 1, 0, len(user_name))
+        header = create_header(len(room_name), operation, 0, len(user_name))
         # ヘッダの送信
         sock.send(header)
         # ボディの送信
@@ -137,12 +142,12 @@ def main():
             if response_value == 0:
                 print("start-initializing")
             elif response_value == 1:
-                print("starting new chat room")
+                print("preparing")
             elif response_value == 2:
-                print("new chat room has started!")
+                print("success!")
                 break
             else:
-                raise Exception("something wrong with starting new chatroom")
+                raise Exception("something wrong with starting chatroom")
 
         # サーバーからトークンを受け取る
         print("トークン待ち受け")

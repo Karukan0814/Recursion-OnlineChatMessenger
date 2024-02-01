@@ -35,26 +35,25 @@ class Chatroom:
         active_clients[owner_info.userid] = owner_info
         self.active_clients = active_clients
         self.owner_token = owner_token
-
         self.messagelist = ["first message"]
 
     def add_message(self, message):
         self.messagelist.append(message)
 
     def del_userlist(self, userid):
-        self.userlist.pop(userid, None)
+        self.active_clients.pop(userid, None)
 
-    def update_userlist(self, userid, address):
+    def update_active_clients(self, userid):
         # アクティブなクライアントのマップに既に存在するか確認
-        if userid not in self.userlist:
+        if userid not in self.active_clients:
             # トークン生成
-            secret_num = secrets.token_urlsafe(255 - len(userid))
+            secret_num = secrets.token_urlsafe(255 - userid)
             token = str(userid) + secret_num
             # なかったら新たにクライアントのデータを作って入れる
-            self.userlist[userid] = Chatclient(userid, address, token)
+            self.active_clients[userid] = Chatclient(userid, token)
         else:
             # あったら最終メンション時刻を更新
-            self.userlist[userid].update_last_activity()
+            self.active_clients[userid].update_last_activity()
 
 
 # チャットルームのマップ
@@ -131,7 +130,9 @@ def enter_chatroom():
                 # トークンを生成
                 # なおかつ、ユーザーをチャットルームのメンバーに入れる
                 owner_token = secrets.token_urlsafe(255)
-                owner_info = Chatclient(operation_payload_size, owner_token)
+                owner_info = Chatclient(
+                    operation_payload_size, owner_token
+                )  # operation_payload_sizeにはユーザー名のバイトサイズが入っている
                 newroom = Chatroom(room_name, owner_token, owner_info)
 
                 # 作成したチャットルームを全チャットルームのマップに入れておく
@@ -149,7 +150,31 @@ def enter_chatroom():
                 # このトークンはクライアントをチャットルームのホストとして識別します。トークンは最大 255 バイトです。
             elif operation == 2:
                 # 既存のチャットルームに参加
-                connection.sendall("既存のチャットルーム".encode())
+                # クライアントにリクエストを処理していることを伝える
+                reaction = 1
+                connection.sendall(reaction.to_bytes(1, "big"))
+
+                # 全チャットルームのマップの中から該当のチャットルームがあるか確認する
+                if roomname_size in chatrooms:
+                    selected_room: Chatroom = chatrooms[roomname_size]
+                    print(selected_room.room_name)
+
+                    # ユーザーをそのチャットルームのユーザーリストの中に入れる
+                    user_id = operation_payload_size
+                    selected_room.update_active_clients(user_id)
+                    print(selected_room.active_clients)
+
+                    token = selected_room.active_clients[user_id].token
+                    print(token)
+                    # クライアントにリクエストが完了したことを伝える
+                    reaction = 2
+                    connection.sendall(reaction.to_bytes(1, "big"))
+
+                    # トークンを返す
+                    connection.sendall(token.encode("utf-8"))
+
+                else:
+                    raise Exception("指定のチャットルームは存在しません")
 
         # 新しいチャットルームに参加しようとするとき、操作コードは 2 です。状態は作成時と同様で、クライアントも生成されたトークンを受け取りますが、ホストではありません。
         # チャットルームごとに、サーバは許可されたリストトークンのリストを追跡する必要があります。ユーザーがそのトークンで参加すると、トークンの所有者として設定されます。メッセージがチャットルーム内の他のすべての人にリレーされるためには、トークンと IP アドレスが一致しなければなりません。
